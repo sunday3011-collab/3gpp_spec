@@ -71,6 +71,9 @@ last_updated: YYYY-MM-DD
 ---
 ```
 
+可选字段：
+- `hot: true` —— 标记高频热点协议（RRC/PHY/MAC/RLC/PDCP），检索优先命中、维护优先盯时效。
+
 规则：
 - `compiled/` 目录下所有页面：`llm_can_overwrite: true`
 - `authored/` 目录下所有页面：`llm_can_overwrite: false`
@@ -95,14 +98,26 @@ last_updated: YYYY-MM-DD
 
 ## Query 规程
 
-收到技术问题时：
+收到技术问题时，**按检索阶梯由廉价到昂贵逐级升级，永远不要直接整篇加载 `raw_sources/` 原文**
+（单篇可达数万行，会撑爆上下文、且弱模型不可用）。token 纪律是第一原则。
 
-1. 先读 `wiki/index.md`，定位相关页面
-2. 读取相关 wiki 页面综合答案
-3. 答案引用必须**精确到 TS 编号和章节**
-4. 判断答案是否有归档价值：
-   - 有价值 → 写入 `wiki/compiled/` 或 `wiki/authored/`
-   - 在 `log.md` 追加：`## [日期] query | [问题摘要] | 归档：[是/否]`
+### 检索阶梯
+1. **路由**：读 `wiki/index.md`（先看 `🔥 热点协议` 区），定位候选页面。
+2. **命中缓存**：读相关 `wiki/compiled/` 蒸馏页 —— 多数问题到此即可作答。
+3. **取 clause 切片**：若蒸馏页不足，查 `wiki/sections.tsv`
+   （列：`spec clause level title file start_line end_line`，用 grep/awk），
+   定位精确 clause，**只读其 `start_line..end_line` 行号区间**那几十行，而非整篇。
+   例：`awk -F'\t' '$1=="TS38.321" && $2=="5.1.4"' wiki/sections.tsv` → 得到文件与行号区间 → 按区间 Read。
+4. **兜底**：仅当上述都不够时，才读原文更大段落。
+
+### 作答与归档
+- 答案引用必须**精确到 TS 编号和章节**（如 `TS38.321 §5.1.4`）。
+- 判断答案是否有归档价值：
+  - 有价值 → 写入 `wiki/compiled/`（热点层优先）或 `wiki/authored/`，使下次查询命中阶梯第 2 级。
+  - 在 `log.md` 追加：`## [日期] query | [问题摘要] | 归档：[是/否]`
+
+> `wiki/sections.tsv` 由 `scripts/gen_section_index.py` 生成（扫描全部原文标题）。
+> 原文有增删/换版后重新运行以刷新行号区间。
 
 ---
 
