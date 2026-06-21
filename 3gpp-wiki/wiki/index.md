@@ -24,17 +24,22 @@
 ## 概念页面
 | 页面 | 涉及层 | 关键词 |
 |------|--------|-------|
+| [[TS23.501_5GS_Architecture]] | concept | 5GC,系统架构,QoS,PDU会话,切片 |
+| [[TS23.502_5GS_Procedures]] | concept | 5GC,流程,注册,会话建立,移动性 |
 | [[TS37.213_Shared_Spectrum]] | concept | PHY,免许可,LBT |
+| [[TS37.340_Multi_Connectivity]] | concept | EN-DC,NR-DC,多连接,DC |
 | [[TS38.101-1_RF_FR1]] | concept | RF,FR1,RAN4 |
 | [[TS38.101-2_RF_FR2]] | concept | RF,FR2,RAN4 |
 | [[TS38.101-3_RF_Interworking]] | concept | RF,FR1+FR2,互操作,RAN4 |
 | [[TS38.101-4_RF_Performance]] | concept | RF,性能要求,RAN4 |
 | [[TS38.101-5_RF_Part5]] | concept | RF,NTN,卫星接入,RAN4 |
+| [[TS38.104_BS_RF]] | concept | RF,gNB,基站射频,RAN4 |
 | [[TS38.133_RRM]] | concept | RRM,测量要求,RAN4 |
 | [[TS38.300_NG-RAN_Overall]] | concept | PHY/MAC/RLC/PDCP/SDAP/RRC |
 | [[TS38.305_UE_Positioning]] | concept | 定位,positioning,LMF |
 | [[TS38.314_L2_Measurements]] | concept | MAC/RLC/PDCP,L2测量 |
 | [[TS38.340_BAP]] | concept | BAP,IAB,回传 |
+| [[TS38.401_NG-RAN_Architecture]] | concept | 架构,CU/DU,CU-CP/CU-UP,接口划分 |
 | [[TS38.413_NGAP]] | concept | NG接口,NGAP,RAN3 |
 | [[TS38.423_XnAP]] | concept | Xn接口,XnAP,RAN3 |
 | [[TS38.473_F1AP]] | concept | F1接口,F1AP,CU-DU |
