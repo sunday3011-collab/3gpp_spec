@@ -7,13 +7,17 @@
   4. 追加 wiki/log.md (append-only)
 
 仅结构化登记，不杜撰逐条技术细节。章节目录从原文 Heading1 抽取。
+
+注：这是一次性迁移脚本，初始 30 个 spec 已于 2026-06-21 执行完毕 (md/ 已清空)。
+保留供复现/参考；若 md/ 不存在则各源文件按「跳过」处理，不会报错。
 """
 
 import os
 import re
 import shutil
 
-REPO = "/Users/huangyang/Code/3GPP_Protocols"
+# 路径从脚本自身位置推导 (scripts/ 在仓库根下一层)
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MD_DIR = os.path.join(REPO, "md")
 WIKI = os.path.join(REPO, "3gpp-wiki")
 RAW = os.path.join(WIKI, "raw_sources", "specs")

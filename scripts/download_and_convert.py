@@ -24,8 +24,12 @@ import urllib.request
 import zipfile
 import xml.etree.ElementTree as ET
 
-OUT_MD_DIR = "/Users/huangyang/Code/3GPP_Protocols/md"
-WORK_ROOT = "/Users/huangyang/Code/3GPP_Protocols/downloads"
+# 路径从脚本自身位置推导，仓库迁移后仍可用 (scripts/ 在仓库根下一层)
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# 下载得到的 md 落入 raw_sources 的暂存区 _incoming，供后续整理/ingest；可用环境变量 OUT_MD_DIR 覆盖
+OUT_MD_DIR = os.environ.get(
+    "OUT_MD_DIR", os.path.join(REPO, "3gpp-wiki", "raw_sources", "specs", "_incoming"))
+WORK_ROOT = os.path.join(REPO, "downloads")  # 临时工作区，运行结束自动清理
 BASE_URL_TEMPLATE = "https://www.3gpp.org/ftp/specs/archive/{series}_series"
 RELEASE_LETTERS = {19: "j", 18: "i", 17: "h", 16: "g", 15: "f"}
 
