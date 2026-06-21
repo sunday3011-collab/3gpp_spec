@@ -10,9 +10,10 @@
 └── scripts/       # 下载/转换/登记脚本，见 scripts/README.md
 ```
 
-- **3gpp-wiki/**：30 个 3GPP 协议（R19 为主）已结构化登记。原始 Markdown 存于
-  `raw_sources/specs/`，LLM 编译的概览页存于 `wiki/compiled/`，个人洞察存于
-  `personal_insights/`。治理规约见 `3gpp-wiki/CLAUDE.md`。
+- **3gpp-wiki/**：**35 个** 3GPP 协议（R19 为主）已入库并**全部蒸馏**（带 clause 引用的
+  结构化知识页）。原始 Markdown 存于 `raw_sources/specs/`，LLM 编译的蒸馏页存于
+  `wiki/compiled/`，个人洞察存于 `personal_insights/`。全库章节索引 `wiki/sections.tsv`
+  支持按 clause 精确取原文切片；检索阶梯与治理规约见 `3gpp-wiki/CLAUDE.md`。
 - **scripts/**：纯 Python 标准库实现，无外部依赖。`download_and_convert.py` 负责从
   3GPP 官网下载协议并转 Markdown；`ingest_md_to_wiki.py` 是初始一次性迁移脚本。
 

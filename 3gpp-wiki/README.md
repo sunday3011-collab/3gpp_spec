@@ -22,7 +22,7 @@ wiki/authored/                  LLM 撰写、不可重写的长文
 personal_insights/inbox|propositions|patterns/
 ```
 
-当前已登记 **30 个 spec**（16 协议层页 + 14 概念页），均为结构化概览，未展开逐条细节。
+当前已登记 **35 个 spec**（21 协议层页 + 14 概念页），**全部为蒸馏页**：带 frontmatter + 职责 + 关键过程/参数/定时器 + 精确 `TS xx.xxx §x.x` 引用。其中 8 个热点协议（RRC/PHY 核心/MAC/RLC/PDCP）标 `hot: true`，内容更厚。
 
 ## 三个指令
 
