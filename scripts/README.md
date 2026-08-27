@@ -11,6 +11,13 @@
 - 自动选版：优先 R19（`j` 前缀），回退 R18（`i`），取同前缀最大小版本。
 - 支持任意系列（按编号前两位推断 `<xx>_series`）与带子编号的协议（如 `38101-5`）。
 - 一个 zip 内多个 docx 自动合并。
+- **公式不丢失**（2026-08-27 起）：
+  - OMML 公式（`m:oMath`，现代公式，38.211 有约 2900 处）→ 内联 `$...$` /
+    块级 `$$...$$` LaTeX，由 `omml2latex.py` 转换（分数/上下标/求和/根号/
+    矩阵/分段函数等 38 系列实际使用的全部结构）。
+  - OLE 公式（Equation.3 / MathType，旧格式）与 Visio 图 → 提取预览图到
+    `images/<md名>/`，公式命名 `eq-NNNN.*`，图命名 `fig-NNNN.*`，md 内以
+    `![](images/...)` 引用。**整理协议时须把 images/ 目录随 md 一起移动**。
 
 ```bash
 python3 scripts/download_and_convert.py 38413:NGAP 24501:NAS_5GS
@@ -19,6 +26,19 @@ python3 scripts/download_and_convert.py 38413:NGAP 24501:NAS_5GS
 
 输出默认落入 `3gpp-wiki/raw_sources/specs/_incoming/`（可用环境变量 `OUT_MD_DIR` 覆盖），
 下载后再整理到对应 `TS<...>` 子目录并执行 `ingest`。
+
+### `convert_images.py`
+WMF/EMF → PNG 批量转换 + md 引用改写（Obsidian/GitHub 不渲染 WMF/EMF）。
+依赖 LibreOffice：`brew install --cask libreoffice`。幂等可重跑。
+
+```bash
+python3 scripts/convert_images.py            # 处理 raw_sources/specs/ 全部
+python3 scripts/convert_images.py <md或目录>  # 指定目标
+```
+
+### `omml2latex.py`
+OMML → LaTeX 转换器（纯标准库），被 `download_and_convert.py` 调用；
+也可独立调试：`python3 scripts/omml2latex.py <docx或document.xml>`。
 
 ### `ingest_md_to_wiki.py`
 **一次性迁移脚本**：把 `md/` 下全部协议结构化登记进 `3gpp-wiki/`

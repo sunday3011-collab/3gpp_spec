@@ -24,6 +24,9 @@ import urllib.request
 import zipfile
 import xml.etree.ElementTree as ET
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from omml2latex import omml_to_latex
+
 # 路径从脚本自身位置推导，仓库迁移后仍可用 (scripts/ 在仓库根下一层)
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # 下载得到的 md 落入 raw_sources 的暂存区 _incoming，供后续整理/ingest；可用环境变量 OUT_MD_DIR 覆盖
@@ -33,7 +36,19 @@ WORK_ROOT = os.path.join(REPO, "downloads")  # 临时工作区，运行结束自
 BASE_URL_TEMPLATE = "https://www.3gpp.org/ftp/specs/archive/{series}_series"
 RELEASE_LETTERS = {19: "j", 18: "i", 17: "h", 16: "g", 15: "f"}
 
-NS = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
+NS = {
+    "w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+    "m": "http://schemas.openxmlformats.org/officeDocument/2006/math",
+    "r": "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
+    "v": "urn:schemas-microsoft-com:vml",
+    "o": "urn:schemas-microsoft-com:office:office",
+    "a": "http://schemas.openxmlformats.org/drawingml/2006/main",
+    "mc": "http://schemas.openxmlformats.org/markup-compatibility/2006",
+}
+
+
+def local(tag):
+    return tag.rsplit("}", 1)[-1] if "}" in tag else tag
 
 
 # ---------- 下载 / 选版 (源自 fetch_spec.py) ----------
@@ -80,7 +95,150 @@ def download_and_extract(zip_url, workdir):
     return out
 
 
-# ---------- 转换 (源自 convert.py, 纯标准库) ----------
+# ---------- 转换 (纯标准库: OMML公式->LaTeX + OLE对象/图片提取) ----------
+
+class ImageSink:
+    """跨 docx 部件共享的图片提取器: OLE公式(eq-)/图(fig-)统一编号落盘"""
+
+    def __init__(self, images_dir):
+        self.images_dir = images_dir
+        self.counter = 0
+        os.makedirs(images_dir, exist_ok=True)
+        # md 与 images/ 同级, 引用形如 images/<stem>/eq-0001.wmf
+        self.rel_prefix = os.path.join(
+            os.path.basename(os.path.dirname(images_dir))
+            or "images", os.path.basename(images_dir))
+
+    def save(self, zf, media_target, is_equation):
+        """从 docx zip 提取 media 文件, 返回相对 md 的引用路径"""
+        try:
+            data = zf.read("word/" + media_target.lstrip("/"))
+        except KeyError:
+            return None
+        self.counter += 1
+        prefix = "eq" if is_equation else "fig"
+        ext = os.path.splitext(media_target)[1].lower() or ".bin"
+        fname = "%s-%04d%s" % (prefix, self.counter, ext)
+        with open(os.path.join(self.images_dir, fname), "wb") as f:
+            f.write(data)
+        return "%s/%s" % (self.rel_prefix, fname)
+
+
+class DocxContext:
+    """单个 docx 的解析上下文: rels 映射 + zip 句柄"""
+
+    def __init__(self, zf, sink):
+        self.zf = zf
+        self.sink = sink
+        self.rels = {}
+        try:
+            rel_root = ET.fromstring(zf.read("word/_rels/document.xml.rels"))
+        except KeyError:
+            return
+        for rel in rel_root:
+            rid = rel.get("Id")
+            target = rel.get("Target") or ""
+            if rel.get("TargetMode") != "External" and "media" in target:
+                self.rels[rid] = target
+
+    def object_image_md(self, obj_elem):
+        """w:object (OLE 公式/图) -> markdown 图片引用; ProgID 区分公式与图"""
+        imgdata, progid = None, ""
+        for e in obj_elem.iter():
+            lt = local(e.tag)
+            if lt == "imagedata" and imgdata is None:
+                imgdata = e
+            elif lt == "OLEObject" and not progid:
+                progid = (e.get("ProgID")
+                          or e.get("{%s}ProgID" % NS["o"]) or "")
+        if imgdata is None:
+            return ""
+        rid = imgdata.get("{%s}id" % NS["r"])
+        target = self.rels.get(rid)
+        if not target:
+            return ""
+        is_eq = progid.startswith("Equation") or "DSMT" in progid
+        ref = self.sink.save(self.zf, target, is_eq)
+        return "![](%s)" % ref if ref else ""
+
+    def drawing_image_md(self, drawing_elem):
+        """w:drawing (内嵌图片) -> markdown 图片引用"""
+        for e in drawing_elem.iter():
+            if local(e.tag) == "blip":
+                rid = e.get("{%s}embed" % NS["r"])
+                target = self.rels.get(rid)
+                if target:
+                    ref = self.sink.save(self.zf, target, False)
+                    if ref:
+                        return "![](%s)" % ref
+        return ""
+
+
+SKIP_TAGS = {"pPr", "rPr", "bookmarkStart", "bookmarkEnd", "proofErr",
+             "sectPr", "commentRangeStart", "commentRangeEnd"}
+
+
+def _run_content(run_elem, out, ctx):
+    """处理 w:r 的子元素: 文本 / OLE对象(w:object) / 图片(w:drawing)"""
+    for c in run_elem:
+        lt = local(c.tag)
+        if lt == "t":
+            out.append(c.text or "")
+        elif lt in ("tab", "br"):
+            out.append(" ")
+        elif lt == "object":
+            out.append(ctx.object_image_md(c))
+        elif lt == "drawing":
+            out.append(ctx.drawing_image_md(c))
+        elif lt == "pict":  # VML 图片 (旧格式)
+            for e in c.iter():
+                if local(e.tag) == "imagedata":
+                    rid = e.get("{%s}id" % NS["r"])
+                    target = ctx.rels.get(rid)
+                    if target:
+                        ref = ctx.sink.save(ctx.zf, target, False)
+                        if ref:
+                            out.append("![](%s)" % ref)
+                    break
+
+
+def para_to_md(para, ctx):
+    """顺序遍历段落: 文本/OMML公式/OLE对象图片, 保持文档内出现顺序"""
+    out = []
+
+    def walk(elem):
+        for child in elem:
+            lt = local(child.tag)
+            if lt in SKIP_TAGS:
+                continue
+            if lt == "r":
+                _run_content(child, out, ctx)
+            elif lt == "oMath":
+                latex = omml_to_latex(child)
+                if latex:
+                    out.append("$%s$" % latex)
+            elif lt == "oMathPara":
+                parts = [omml_to_latex(m) for m in child
+                         if local(m.tag) == "oMath"]
+                parts = [p for p in parts if p]
+                if parts:
+                    out.append("\n$$%s$$\n" % " \\quad ".join(parts))
+            elif lt == "AlternateContent":
+                # OMML 公式常包在 mc:AlternateContent 内 (Fallback 是 OLE 旧形态)
+                choice = next((c for c in child if local(c.tag) == "Choice"),
+                              None)
+                if choice is not None:
+                    walk(choice)
+            elif lt == "object":
+                out.append(ctx.object_image_md(child))
+            elif lt == "drawing":
+                out.append(ctx.drawing_image_md(child))
+            else:
+                walk(child)
+
+    walk(para)
+    return "".join(out)
+
 
 def get_text(elem):
     return "".join(t.text for t in elem.findall(".//w:t", NS) if t.text)
@@ -104,12 +262,14 @@ def get_heading_level(para):
     return 0
 
 
-def table_to_md(table_elem):
+def table_to_md(table_elem, ctx):
     rows = []
     for tr in table_elem.findall("w:tr", NS):
         cells = []
         for tc in tr.findall("w:tc", NS):
-            txt = re.sub(r"\s+", " ", get_text(tc).strip())
+            cell_parts = [para_to_md(p, ctx).strip()
+                          for p in tc.findall("w:p", NS)]
+            txt = re.sub(r"\s+", " ", " ".join(x for x in cell_parts if x))
             cells.append(txt.replace("|", "\\|"))
         rows.append(cells)
     if not rows:
@@ -123,26 +283,33 @@ def table_to_md(table_elem):
     return md
 
 
-def convert_docx_to_md(docx_path):
+def convert_docx_to_md(docx_path, sink):
+    """转换单个 docx: OMML 公式转 LaTeX, OLE公式/图提取到 images 目录"""
     with zipfile.ZipFile(docx_path, "r") as z:
         root = ET.fromstring(z.read("word/document.xml"))
-    body = root.find("w:body", NS)
-    if body is None:
-        return ""
-    lines = []
-    for child in body:
-        if child.tag.endswith("}p"):
-            level = get_heading_level(child)
-            text = get_text(child).strip()
-            if not text:
+        ctx = DocxContext(z, sink)
+        body = root.find("w:body", NS)
+        if body is None:
+            return ""
+        lines = []
+        for child in body:
+            if child.tag.endswith("}p"):
+                level = get_heading_level(child)
+                text = para_to_md(child, ctx).strip()
+                if not text:
+                    lines.append("")
+                elif level > 0:
+                    lines.append("#" * min(level, 6) + " " + text)
+                else:
+                    # 整段只有一条公式 -> 升级为块级 $$ 展示
+                    if (text.startswith("$") and text.endswith("$")
+                            and text.count("$") == 2
+                            and "\n" not in text):
+                        text = "$$%s$$" % text[1:-1]
+                    lines.append(text)
+            elif child.tag.endswith("}tbl"):
+                lines.append(table_to_md(child, ctx))
                 lines.append("")
-            elif level > 0:
-                lines.append("#" * min(level, 6) + " " + text)
-            else:
-                lines.append(text)
-        elif child.tag.endswith("}tbl"):
-            lines.append(table_to_md(child))
-            lines.append("")
     # 折叠多余空行
     result, prev_blank = [], False
     for ln in lines:
@@ -185,13 +352,16 @@ def process(spec, name, release=19):
         if not docx_list:
             print("  [失败] 无 .docx 文件可转换 (可能为旧式 .doc)")
             return None
+        out_name = f"{spec_to_dirname(spec)}_{name}_{ver}.md"
+        out_path = os.path.join(OUT_MD_DIR, out_name)
+        # 公式图/插图目录与 md 同级: images/<md名>/eq-NNNN.* | fig-NNNN.*
+        sink = ImageSink(os.path.join(OUT_MD_DIR, "images",
+                                      os.path.splitext(out_name)[0]))
         parts = []
         for d in docx_list:
             print(f"  转换: {os.path.basename(d)}")
-            parts.append(convert_docx_to_md(d))
+            parts.append(convert_docx_to_md(d, sink))
         md = "\n\n---\n\n".join(parts)
-        out_name = f"{spec_to_dirname(spec)}_{name}_{ver}.md"
-        out_path = os.path.join(OUT_MD_DIR, out_name)
         with open(out_path, "w", encoding="utf-8") as f:
             f.write(md)
         kb = os.path.getsize(out_path) / 1024

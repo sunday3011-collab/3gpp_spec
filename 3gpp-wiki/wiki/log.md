@@ -32,3 +32,10 @@
 - 协议层：SDAP 37.324、RRC 38.304/306、NAS 24.501/24.301、PHY 38.201/202/215
 - 概念：38.300/401/305/314/340、37.213/340、NGAP/XnAP/F1AP、38.104、38.101-1~5、38.133、23.501/502
 - 至此 35 个 spec 全部蒸馏完成；README(根+wiki)同步更新计数与状态
+
+## [2026-08-27] compile | sections.tsv 全量重建 | 影响页面：wiki/sections.tsv
+- raw_sources/specs/ 目录结构扁平化后旧索引路径全部失效（旧路径含 TS 子目录），本次重建对齐现状
+- 新增 scripts/gen_section_index.py（CLAUDE.md 原引用的脚本此前缺失，本次补齐）
+- 跳过 *_partNN.md 分片（24.501×2 / 38.133×7 / 38.331×2，与完整文件内容重复）
+- file 列改为 workspace 相对路径（raw_sources/specs/<name>.md），与 CLAUDE.md ingest 示例一致
+- 35 个 spec → 28689 条 clause 记录；抽样校验：38.321 Foreword/§5.1.4/Annex A、38.331 §A.3.1.1 行号与原文对齐
