@@ -9,18 +9,25 @@
 - level：标题层级（# 的个数）
 - 区间含本 clause 及其全部子 clause（start..end，1-based 闭区间）
 - file：相对仓库根的路径
+
+默认扫描 `3gpp-wiki-v2/`。处理其它 wiki 时用环境变量覆盖:
+  WIKI_DIR=3gpp-wiki python3 scripts/gen_section_index.py
+原文有增删/换版/拆分后重新运行以刷新行号区间。
 """
 
 import os
 import re
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SPECS_ROOT = os.path.join(REPO, "3gpp-wiki", "raw_sources", "specs")
-OUT = os.path.join(REPO, "3gpp-wiki", "wiki", "sections.tsv")
+# 用 WIKI_DIR 覆盖目标 wiki (默认 3gpp-wiki-v2); SPECS_ROOT / OUT 随之推导
+WIKI_DIR = os.environ.get("WIKI_DIR", "3gpp-wiki-v2")
+SPECS_ROOT = os.path.join(REPO, WIKI_DIR, "raw_sources", "specs")
+OUT = os.path.join(REPO, WIKI_DIR, "wiki", "sections.tsv")
 
 HEADING = re.compile(r"^(#{1,6})\s+(.*\S)\s*$")
 # clause: 数字式(可带尾字母,如 5.1.1a) 或 附录式(A.4.1)
-CLAUSE = re.compile(r"^(\d+(?:\.\d+)*[a-z]?|[A-Z]\.\d+(?:\.\d+)*)(.*)$")
+# (?![A-Za-z]): clause 后不能紧跟字母, 否则 "3GPP..." 会被误判为 clause "3"
+CLAUSE = re.compile(r"^(\d+(?:\.\d+)*[a-z]?|[A-Z]\.\d+(?:\.\d+)*)(?![A-Za-z])(.*)$")
 
 
 def spec_from_filename(fname):
