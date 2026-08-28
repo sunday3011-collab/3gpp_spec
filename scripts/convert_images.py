@@ -8,7 +8,7 @@
 
 用法:
   python3 scripts/convert_images.py [md文件或目录...]
-  不带参数则处理 3gpp-wiki/raw_sources/specs/ 下全部 md 与 images/ 目录
+  不带参数则处理 3gpp-specs/raw_sources/specs/ 下全部 md 与 images/ 目录
 
 规则:
   - 仅转换 .wmf/.emf -> .png (soffice headless)
@@ -23,7 +23,7 @@ import subprocess
 import sys
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DEFAULT_ROOT = os.path.join(REPO, "3gpp-wiki", "raw_sources", "specs")
+DEFAULT_ROOT = os.path.join(REPO, "3gpp-specs", "raw_sources", "specs")
 SOFFICE = shutil.which("soffice") or "/Applications/LibreOffice.app/Contents/MacOS/soffice"
 
 

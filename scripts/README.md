@@ -24,7 +24,7 @@ python3 scripts/download_and_convert.py 38413:NGAP 24501:NAS_5GS
 # 每项格式 <编号>[:<名称>]，编号去掉点（38.101-5 写作 38101-5）
 ```
 
-输出默认落入 `3gpp-wiki/raw_sources/specs/_incoming/`（可用环境变量 `OUT_MD_DIR` 覆盖），
+输出默认落入 `3gpp-specs/raw_sources/specs/_incoming/`（可用环境变量 `OUT_MD_DIR` 覆盖），
 下载后再整理到对应 `TS<...>` 子目录并执行 `ingest`。
 
 ### `convert_images.py`
@@ -41,7 +41,7 @@ OMML → LaTeX 转换器（纯标准库），被 `download_and_convert.py` 调�
 也可独立调试：`python3 scripts/omml2latex.py <docx或document.xml>`。
 
 ### `ingest_md_to_wiki.py`
-**一次性迁移脚本**：把 `md/` 下全部协议结构化登记进 `3gpp-wiki/`
+**一次性迁移脚本**：把 `md/` 下全部协议结构化登记进 `3gpp-specs/`
 （移入 raw_sources、生成 compiled 概览页、重建 index.md、追加 log.md）。
 初始 30 个 spec 已于 2026-06-21 执行完毕，保留供复现/参考。
 

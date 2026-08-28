@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-将 md/ 下的全部3GPP协议结构化登记进 3gpp-wiki：
+将 md/ 下的全部3GPP协议结构化登记进 3gpp-specs：
   1. 把每个 md 移入 raw_sources/specs/<TS子目录>/ (人投喂动作)
   2. 为每个 spec 生成 wiki/compiled/ 概览页 (frontmatter + 职责 + 章节目录 + 原文链接)
   3. 重建 wiki/index.md
@@ -19,7 +19,7 @@ import shutil
 # 路径从脚本自身位置推导 (scripts/ 在仓库根下一层)
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MD_DIR = os.path.join(REPO, "md")
-WIKI = os.path.join(REPO, "3gpp-wiki")
+WIKI = os.path.join(REPO, "3gpp-specs")
 RAW = os.path.join(WIKI, "raw_sources", "specs")
 COMPILED = os.path.join(WIKI, "wiki", "compiled")
 TODAY = "2026-06-21"

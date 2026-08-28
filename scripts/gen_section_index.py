@@ -11,7 +11,7 @@
 - file：相对仓库根的路径
 
 默认扫描 `3gpp-specs/`。处理其它 wiki 时用环境变量覆盖:
-  WIKI_DIR=3gpp-wiki python3 scripts/gen_section_index.py
+  WIKI_DIR=3gpp-specs python3 scripts/gen_section_index.py
 原文有增删/换版/拆分后重新运行以刷新行号区间。
 """
 

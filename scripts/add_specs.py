@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-增量入库：下载若干 3GPP 协议并登记进 3gpp-wiki。
+增量入库：下载若干 3GPP 协议并登记进 3gpp-specs。
 
 复用 download_and_convert 的下载/转换逻辑；随后：
   - 原文移入 raw_sources/specs/<raw_subdir>/
@@ -18,7 +18,7 @@ import shutil
 import download_and_convert as dl  # 同目录复用
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-WIKI = os.path.join(REPO, "3gpp-wiki")
+WIKI = os.path.join(REPO, "3gpp-specs")
 RAW = os.path.join(WIKI, "raw_sources", "specs")
 COMPILED = os.path.join(WIKI, "wiki", "compiled")
 INDEX = os.path.join(WIKI, "wiki", "index.md")
