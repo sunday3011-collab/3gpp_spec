@@ -31,6 +31,7 @@ import os
 import re
 import shutil
 import sys
+import time
 import urllib.request
 import zipfile
 import xml.etree.ElementTree as ET
@@ -603,14 +604,43 @@ def process_pdf(spec, name, out_dir=PDF_OUT_DIR):
         sz = os.path.getsize(out_path)
         print(f"  [跳过] 已存在 -> {out_name} ({sz/1024:.1f} KB)")
         return out_path
-    try:
-        print(f"  下载: {pdf_url}")
-        req = urllib.request.Request(pdf_url, headers={"User-Agent": "Mozilla/5.0"})
-        with urllib.request.urlopen(req, timeout=300) as resp, \
-             open(out_path, "wb") as f:
-            shutil.copyfileobj(resp, f)
-    except Exception as e:
-        print(f"  [失败] 下载出错: {e}")
+    # 下载: 分块 + 进度打印 + 失败重试 (最多 3 次, 指数退避)
+    MAX_ATTEMPTS = 3
+    last_err = None
+    for attempt in range(1, MAX_ATTEMPTS + 1):
+        try:
+            print(f"  下载 (尝试 {attempt}/{MAX_ATTEMPTS}): {pdf_url}")
+            req = urllib.request.Request(pdf_url, headers={"User-Agent": "Mozilla/5.0"})
+            done = 0
+            next_mark = 5 * 1024 * 1024  # 每 5MB 打印一次进度
+            with urllib.request.urlopen(req, timeout=300) as resp:
+                total = int(resp.headers.get("Content-Length") or 0)
+                with open(out_path, "wb") as f:
+                    while True:
+                        chunk = resp.read(64 * 1024)
+                        if not chunk:
+                            break
+                        f.write(chunk)
+                        done += len(chunk)
+                        if done >= next_mark:
+                            if total:
+                                print(f"  进度 {done/1024/1024:.1f}/{total/1024/1024:.1f} MB ({done*100/total:.0f}%)")
+                            else:
+                                print(f"  已下载 {done/1024/1024:.1f} MB")
+                            next_mark += 5 * 1024 * 1024
+            last_err = None
+            break
+        except Exception as e:
+            last_err = e
+            print(f"  [重试 {attempt}/{MAX_ATTEMPTS}] {e}")
+            if os.path.exists(out_path):
+                os.remove(out_path)
+            if attempt < MAX_ATTEMPTS:
+                wait = 2 ** attempt  # 2s, 4s
+                print(f"  等待 {wait}s 后重试...")
+                time.sleep(wait)
+    if last_err is not None:
+        print(f"  [失败] 下载出错 (已重试 {MAX_ATTEMPTS} 次): {last_err}")
         if os.path.exists(out_path):
             os.remove(out_path)
         return None
