@@ -10,7 +10,7 @@
 - 区间含本 clause 及其全部子 clause（start..end，1-based 闭区间）
 - file：相对仓库根的路径
 
-默认扫描 `3gpp-wiki-v2/`。处理其它 wiki 时用环境变量覆盖:
+默认扫描 `3gpp-specs/`。处理其它 wiki 时用环境变量覆盖:
   WIKI_DIR=3gpp-wiki python3 scripts/gen_section_index.py
 原文有增删/换版/拆分后重新运行以刷新行号区间。
 """
@@ -19,8 +19,8 @@ import os
 import re
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-# 用 WIKI_DIR 覆盖目标 wiki (默认 3gpp-wiki-v2); SPECS_ROOT / OUT 随之推导
-WIKI_DIR = os.environ.get("WIKI_DIR", "3gpp-wiki-v2")
+# 用 WIKI_DIR 覆盖目标 wiki (默认 3gpp-specs); SPECS_ROOT / OUT 随之推导
+WIKI_DIR = os.environ.get("WIKI_DIR", "3gpp-specs")
 SPECS_ROOT = os.path.join(REPO, WIKI_DIR, "raw_sources", "specs")
 OUT = os.path.join(REPO, WIKI_DIR, "wiki", "sections.tsv")
 

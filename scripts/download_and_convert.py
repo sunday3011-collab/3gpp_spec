@@ -21,9 +21,9 @@
   (每项格式 <编号>[:<名称>]，编号去掉点，如 38.101-5 写作 38101-5)
 
   # 对目录下已有 md 文件按 2MB 上限拆分 (不重新下载)
-  python3 download_and_convert.py --split 3gpp-wiki-v2/raw_sources/specs
+  python3 download_and_convert.py --split 3gpp-specs/raw_sources/specs
 
-  # 从 ETSI 下载最新 PDF，落入 3gpp-wiki-v2/raw_sources/pdfs/
+  # 从 ETSI 下载最新 PDF，落入 3gpp-specs/raw_sources/pdfs/
   python3 download_and_convert.py --pdf 38331:RRC 23501:5GS_Architecture 38101-1:RF_FR1
 """
 
@@ -43,7 +43,7 @@ from omml2latex import omml_to_latex
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # 下载得到的 md 落入 raw_sources 的暂存区 _incoming，供后续整理/ingest；可用环境变量 OUT_MD_DIR 覆盖
 OUT_MD_DIR = os.environ.get(
-    "OUT_MD_DIR", os.path.join(REPO, "3gpp-wiki-v2", "raw_sources", "specs", "_incoming"))
+    "OUT_MD_DIR", os.path.join(REPO, "3gpp-specs", "raw_sources", "specs", "_incoming"))
 WORK_ROOT = os.path.join(REPO, "downloads")  # 临时工作区，运行结束自动清理
 BASE_URL_TEMPLATE = "https://www.3gpp.org/ftp/specs/archive/{series}_series"
 RELEASE_LETTERS = {19: "j", 18: "i", 17: "h", 16: "g", 15: "f"}
@@ -489,7 +489,7 @@ def split_dir(dir_path):
 ETSI_DELIVER_BASE = "https://www.etsi.org/deliver/etsi_TS"
 # PDF 输出目录: 与 specs/ 同级, 方便与 raw_sources/ 内其他原始材料一起管理
 PDF_OUT_DIR = os.environ.get(
-    "PDF_OUT_DIR", os.path.join(REPO, "3gpp-wiki-v2", "raw_sources", "pdfs"))
+    "PDF_OUT_DIR", os.path.join(REPO, "3gpp-specs", "raw_sources", "pdfs"))
 
 _VER_DIR_RE = re.compile(r"^(\d+)\.(\d+)\.(\d+)_\d+$")   # 例: 19.03.00_60
 
