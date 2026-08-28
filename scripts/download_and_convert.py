@@ -10,10 +10,16 @@
   - 38/37/24 等任意系列 (按编号前两位推断 <xx>_series 目录)
   - 带子编号的协议 (如 38101-5 -> 目录 38.101-5)
   - 一个zip内多个docx自动合并
+  - 转换后单文件 > 2MB 自动按标题边界拆分为多份 < 2MB 的文件
+    (<stem>_part1.md, <stem>_part2.md, ...), 原文件删除; 图片引用不变,
+    各 part 共用同一 images/<stem>/ 目录。
 
 用法:
   python3 download_and_convert.py 38413:NGAP 24501:NAS_5GS ...
   (每项格式 <编号>[:<名称>]，编号去掉点，如 38.101-5 写作 38101-5)
+
+  # 对目录下已有 md 文件按 2MB 上限拆分 (不重新下载)
+  python3 download_and_convert.py --split 3gpp-wiki-v2/raw_sources/specs
 """
 
 import os
@@ -35,6 +41,11 @@ OUT_MD_DIR = os.environ.get(
 WORK_ROOT = os.path.join(REPO, "downloads")  # 临时工作区，运行结束自动清理
 BASE_URL_TEMPLATE = "https://www.3gpp.org/ftp/specs/archive/{series}_series"
 RELEASE_LETTERS = {19: "j", 18: "i", 17: "h", 16: "g", 15: "f"}
+
+# 单个 md 文件大小上限 (字节): 超过则按标题边界拆分为多份 < 上限的文件
+MAX_MD_BYTES = 2 * 1024 * 1024  # 2 MB
+# 拆分目标略小于上限, 留出余量确保每个 part 严格 < 2 MB
+SPLIT_TARGET_BYTES = MAX_MD_BYTES - 4 * 1024
 
 NS = {
     "w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
@@ -321,6 +332,132 @@ def convert_docx_to_md(docx_path, sink):
     return "\n".join(result)
 
 
+# ---------- 大文件拆分 (按标题边界, 每份 < 2 MB) ----------
+
+def _byte_len(s):
+    return len(s.encode("utf-8"))
+
+
+def _split_by_paragraphs(content, max_size):
+    """最后手段: 按空行段落拆分; 单段仍超限则按字节硬切。"""
+    paras = re.split(r"(\n\n+)", content)
+    parts, cur, cur_len = [], "", 0
+    for p in paras:
+        plen = _byte_len(p)
+        if plen > max_size:
+            if cur:
+                parts.append(cur)
+                cur, cur_len = "", 0
+            # 单段超限, 按字节硬切 (解码边界容忍)
+            b = p.encode("utf-8")
+            for i in range(0, len(b), max_size):
+                parts.append(b[i:i + max_size].decode("utf-8", errors="ignore"))
+        elif cur_len + plen > max_size:
+            if cur:
+                parts.append(cur)
+            cur, cur_len = p, plen
+        else:
+            cur += p
+            cur_len += plen
+    if cur:
+        parts.append(cur)
+    return parts
+
+
+def _split_md_segments(content, max_size, level=1):
+    """递归按标题边界拆分, 每个 part 字节数 <= max_size。"""
+    if _byte_len(content) <= max_size:
+        return [content]
+    # 仅匹配恰好 level 级标题 (# level=1, ## level=2, ...)
+    pattern = re.compile(r"(?m)^#{%d} [^\n]*$" % level)
+    matches = list(pattern.finditer(content))
+    if not matches:
+        if level < 6:
+            return _split_md_segments(content, max_size, level + 1)
+        return _split_by_paragraphs(content, max_size)
+
+    segments = []
+    if matches[0].start() > 0:
+        preamble = content[:matches[0].start()]
+        if preamble.strip():
+            segments.append(preamble)
+    for i, m in enumerate(matches):
+        start = m.start()
+        end = matches[i + 1].start() if i + 1 < len(matches) else len(content)
+        seg = content[start:end]
+        if seg.strip():
+            segments.append(seg)
+
+    parts, cur, cur_len = [], "", 0
+    for seg in segments:
+        seg_len = _byte_len(seg)
+        if seg_len > max_size:
+            # 单个标题段仍超限: 先落盘当前 part, 再下钻一级拆分该段
+            if cur:
+                parts.append(cur)
+                cur, cur_len = "", 0
+            parts.extend(_split_md_segments(seg, max_size, level + 1))
+        elif cur_len + seg_len > max_size:
+            if cur:
+                parts.append(cur)
+            cur, cur_len = seg, seg_len
+        else:
+            cur += seg
+            cur_len += seg_len
+    if cur:
+        parts.append(cur)
+    return parts
+
+
+def split_md_file(path, max_size=MAX_MD_BYTES):
+    """
+    若 path 超过 max_size 字节, 按标题边界拆分为多份 < max_size 的文件
+    <stem>_part1.md, <stem>_part2.md, ...; 原文件删除。
+    图片引用 (images/<stem>/...) 在各 part 中保持不变, 共用同一图片目录。
+    返回新文件路径列表 (未拆分则返回 [path])。
+    """
+    with open(path, "r", encoding="utf-8") as f:
+        content = f.read()
+    if _byte_len(content) <= max_size:
+        return [path]
+    parts = _split_md_segments(content, SPLIT_TARGET_BYTES, level=1)
+    if len(parts) <= 1:
+        # 极端情况: 按标题拆不出多份, 用段落级硬切兜底
+        parts = _split_by_paragraphs(content, SPLIT_TARGET_BYTES)
+    if len(parts) <= 1:
+        return [path]
+    stem, _ = os.path.splitext(path)
+    new_paths = []
+    for i, part in enumerate(parts, 1):
+        new_path = "%s_part%d.md" % (stem, i)
+        with open(new_path, "w", encoding="utf-8") as f:
+            f.write(part)
+        new_paths.append(new_path)
+    os.remove(path)
+    return new_paths
+
+
+def split_dir(dir_path):
+    """对目录下所有 .md 文件 (递归) 执行拆分, 仅处理超过上限的文件。"""
+    count = 0
+    for root, _, files in os.walk(dir_path):
+        for fn in sorted(files):
+            if not fn.endswith(".md"):
+                continue
+            p = os.path.join(root, fn)
+            if os.path.getsize(p) <= MAX_MD_BYTES:
+                continue
+            print("[拆分] %s (%.2f MB)" % (p, os.path.getsize(p) / 1024 / 1024))
+            results = split_md_file(p)
+            if len(results) > 1:
+                count += 1
+                for r in results:
+                    print("  -> %s (%.1f KB)" % (os.path.basename(r),
+                                                 os.path.getsize(r) / 1024))
+    print("\n==== 拆分汇总: %d 个文件被拆分 ====" % count)
+    return count
+
+
 # ---------- 主流程 ----------
 
 def process(spec, name, release=19):
@@ -366,7 +503,14 @@ def process(spec, name, release=19):
             f.write(md)
         kb = os.path.getsize(out_path) / 1024
         print(f"  [完成] -> {out_name} ({kb:.1f} KB)")
-        return out_path
+        # 超过 2MB 则按标题边界拆分为多份 < 2MB 的文件
+        out_paths = split_md_file(out_path)
+        if len(out_paths) > 1:
+            print(f"  [拆分] -> {len(out_paths)} 份 (每份 < 2MB):")
+            for p in out_paths:
+                print(f"    - {os.path.basename(p)} "
+                      f"({os.path.getsize(p) / 1024:.1f} KB)")
+        return out_paths
     except Exception as e:
         print(f"  [失败] {e}")
         return None
@@ -375,6 +519,10 @@ def process(spec, name, release=19):
 
 
 def main():
+    # --split <dir> 模式: 对目录下已有 md 文件按 2MB 上限拆分, 不重新下载
+    if len(sys.argv) >= 3 and sys.argv[1] == "--split":
+        split_dir(sys.argv[2])
+        return
     os.makedirs(OUT_MD_DIR, exist_ok=True)
     os.makedirs(WORK_ROOT, exist_ok=True)
     results = {}
@@ -382,8 +530,12 @@ def main():
         spec, _, name = arg.partition(":")
         results[spec] = process(spec, name or spec)
     print("\n==== 汇总 ====")
-    for spec, path in results.items():
-        print(f"  {spec}: {'成功' if path else '失败'}")
+    for spec, paths in results.items():
+        if paths:
+            names = ", ".join(os.path.basename(p) for p in paths)
+            print(f"  {spec}: 成功 -> {names}")
+        else:
+            print(f"  {spec}: 失败")
     shutil.rmtree(WORK_ROOT, ignore_errors=True)
 
 
