@@ -13,6 +13,8 @@
   - 转换后单文件 > 2MB 自动按标题边界拆分为多份 < 2MB 的文件
     (<stem>_part1.md, <stem>_part2.md, ...), 原文件删除; 图片引用不变,
     各 part 共用同一 images/<stem>/ 目录。
+  - 从 ETSI deliver 站点直接下载官方发布的 PDF 最新版
+    (HTML 目录列表发现所有版本目录，按版本号元组排序取最高)。
 
 用法:
   python3 download_and_convert.py 38413:NGAP 24501:NAS_5GS ...
@@ -20,6 +22,9 @@
 
   # 对目录下已有 md 文件按 2MB 上限拆分 (不重新下载)
   python3 download_and_convert.py --split 3gpp-wiki-v2/raw_sources/specs
+
+  # 从 ETSI 下载最新 PDF，落入 3gpp-wiki-v2/raw_sources/pdfs/
+  python3 download_and_convert.py --pdf 38331:RRC 23501:5GS_Architecture 38101-1:RF_FR1
 """
 
 import os
@@ -478,6 +483,157 @@ def split_dir(dir_path):
     return count
 
 
+# ---------- ETSI PDF 下载 (官方发布 PDF, 版本目录最新优先) ----------
+
+ETSI_DELIVER_BASE = "https://www.etsi.org/deliver/etsi_TS"
+# PDF 输出目录: 与 specs/ 同级, 方便与 raw_sources/ 内其他原始材料一起管理
+PDF_OUT_DIR = os.environ.get(
+    "PDF_OUT_DIR", os.path.join(REPO, "3gpp-wiki-v2", "raw_sources", "pdfs"))
+
+_VER_DIR_RE = re.compile(r"^(\d+)\.(\d+)\.(\d+)_\d+$")   # 例: 19.03.00_60
+
+
+def _spec_to_etsi(spec_str):
+    """Turn CLI spec (e.g. "38331", "38101-1") into (etsi_code, range_dir, dotted).
+
+    38.331   -> code=138331,    range=138300_138399
+    38.101-1 -> code=13810101,  range=138100_138199
+    23.501   -> code=123501,    range=123500_123599
+    """
+    dotted = spec_to_dirname(spec_str)   # "38.101-1"
+    m = re.match(r"^(\d{2})\.(\d+)(?:-(\d+))?$", dotted)
+    if not m:
+        raise ValueError(f"无法解析协议编号: {spec_str!r}")
+    xx, yyy, part = m.group(1), m.group(2), m.group(3)
+    etsi_code = "1" + xx + yyy
+    if part:
+        etsi_code += "%02d" % int(part)
+    floor = (int(yyy) // 100) * 100
+    range_dir = "1%s%03d_1%s%03d" % (xx, floor, xx, floor + 99)
+    return etsi_code, range_dir, dotted
+
+
+def _fetch_etsi_links(url, suffix=None):
+    """抓取 ETSI 目录列表页面, 返回链接名列表(目录/文件)。
+
+    ETSI deliver 页面示例:
+      <A HREF="/deliver/etsi_TS/138300_138399/138331/19.03.00_60/">19.03.00_60</A>
+      <A HREF="/deliver/.../ts_138331v190300p.pdf">ts_138331v190300p.pdf</A>
+    从 href 中取路径 basename, 跳过父目录和不匹配 suffix 的条目。
+    """
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+    with urllib.request.urlopen(req, timeout=60) as resp:
+        html = resp.read().decode("utf-8", errors="ignore")
+    # HREF 大小写不敏感; href 可能是绝对路径
+    hrefs = re.findall(r"""href\s*=\s*["']([^"']+)["']""", html, re.IGNORECASE)
+    results = []
+    for h in hrefs:
+        name = os.path.basename(h.rstrip("/"))
+        if not name or "[To Parent" in name:
+            continue
+        if suffix and not name.endswith(suffix):
+            continue
+        if name not in results:
+            results.append(name)
+    return results
+
+
+def _pick_latest_version(dir_names):
+    """按 (major, minor, patch) 元组排序, 返回版本最高的目录名。"""
+    best = None  # ((major, minor, patch), dir_name)
+    for d in dir_names:
+        m = _VER_DIR_RE.match(d)
+        if not m:
+            continue
+        ver = (int(m.group(1)), int(m.group(2)), int(m.group(3)))
+        if best is None or ver > best[0]:
+            best = (ver, d)
+    return best[1] if best else None
+
+
+def _ver_dir_to_version(ver_dir):
+    """'19.03.00_60' -> (19, 3, 0)"""
+    m = _VER_DIR_RE.match(ver_dir)
+    if not m:
+        return None
+    return (int(m.group(1)), int(m.group(2)), int(m.group(3)))
+
+
+def process_pdf(spec, name, out_dir=PDF_OUT_DIR):
+    """下载单个 spec 的 ETSI 官方最新 PDF。
+
+    返回落地文件路径或 None。已有同名文件时跳过(不变更)。
+    """
+    print(f"\n[PDF] {spec} ({name})")
+    try:
+        etsi_code, range_dir, dotted = _spec_to_etsi(spec)
+    except ValueError as e:
+        print(f"  [失败] {e}")
+        return None
+    spec_url = f"{ETSI_DELIVER_BASE}/{range_dir}/{etsi_code}/"
+    try:
+        ver_dirs = _fetch_etsi_links(spec_url)
+    except Exception as e:
+        print(f"  [失败] 无法访问 ETSI 目录 {spec_url}: {e}")
+        return None
+    latest = _pick_latest_version(ver_dirs)
+    if not latest:
+        print(f"  [失败] 在 {spec_url} 未找到版本目录")
+        return None
+    ver_tuple = _ver_dir_to_version(latest)
+    ver_str = "V%d.%d.%d" % ver_tuple if ver_tuple else latest
+    print(f"  最新版本目录: {latest}  ({ver_str})")
+
+    ver_url = f"{ETSI_DELIVER_BASE}/{range_dir}/{etsi_code}/{latest}/"
+    try:
+        files = _fetch_etsi_links(ver_url, suffix=".pdf")
+    except Exception as e:
+        print(f"  [失败] 无法访问版本目录 {ver_url}: {e}")
+        return None
+    pdf_name = next((f for f in files if f.endswith(".pdf")), None)
+    if not pdf_name:
+        print(f"  [失败] 版本目录中未找到 .pdf 文件 (已发现: {files})")
+        return None
+    pdf_url = f"{ver_url}{pdf_name}"
+
+    os.makedirs(out_dir, exist_ok=True)
+    out_name = f"{dotted}_{name}_{ver_str}.pdf"
+    out_path = os.path.join(out_dir, out_name)
+    if os.path.exists(out_path):
+        sz = os.path.getsize(out_path)
+        print(f"  [跳过] 已存在 -> {out_name} ({sz/1024:.1f} KB)")
+        return out_path
+    try:
+        print(f"  下载: {pdf_url}")
+        req = urllib.request.Request(pdf_url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=300) as resp, \
+             open(out_path, "wb") as f:
+            shutil.copyfileobj(resp, f)
+    except Exception as e:
+        print(f"  [失败] 下载出错: {e}")
+        if os.path.exists(out_path):
+            os.remove(out_path)
+        return None
+    kb = os.path.getsize(out_path) / 1024
+    print(f"  [完成] -> {out_name} ({kb:.1f} KB)")
+    return out_path
+
+
+def process_pdf_all(specs):
+    """批量执行 process_pdf; specs 为 [(spec, name), ...]; 打印汇总。"""
+    os.makedirs(PDF_OUT_DIR, exist_ok=True)
+    results = {}
+    for spec, name in specs:
+        results[spec] = process_pdf(spec, name)
+    print("\n==== PDF 汇总 ====")
+    for spec, path in results.items():
+        if path:
+            print(f"  {spec}: 成功 -> {os.path.basename(path)}")
+        else:
+            print(f"  {spec}: 失败")
+    return results
+
+
 # ---------- 主流程 ----------
 
 def process(spec, name, release=19):
@@ -539,6 +695,14 @@ def process(spec, name, release=19):
 
 
 def main():
+    # --pdf <spec[:name]> ... 模式: 从 ETSI 下载最新 PDF
+    if len(sys.argv) >= 2 and sys.argv[1] == "--pdf":
+        specs = []
+        for arg in sys.argv[2:]:
+            spec, _, name = arg.partition(":")
+            specs.append((spec, name or spec))
+        process_pdf_all(specs)
+        return
     # --split <dir> 模式: 对目录下已有 md 文件按 2MB 上限拆分, 不重新下载
     if len(sys.argv) >= 3 and sys.argv[1] == "--split":
         split_dir(sys.argv[2])
