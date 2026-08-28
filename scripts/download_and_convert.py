@@ -409,11 +409,29 @@ def _split_md_segments(content, max_size, level=1):
     return parts
 
 
+_TITLE_RE = re.compile(r"3GPP TS \S+ V\S+ \([0-9-]+\)")
+
+
+def _ensure_leading_heading(part_text, fallback_title):
+    """若 part 首个非空行不是 markdown 标题, 在开头补一个 H1。
+    标题优先从扉页正文提取 3GPP TS 标识 (如 3GPP TS 38.133 V19.5.0 (2026-06)),
+    提取不到则用 fallback_title, 保证每个 part 都以标题起首。"""
+    for line in part_text.splitlines():
+        if line.strip():
+            if line.lstrip().startswith("#"):
+                return part_text
+            break
+    m = _TITLE_RE.search(part_text)
+    title = m.group(0) if m else fallback_title
+    return "# %s\n\n%s" % (title, part_text)
+
+
 def split_md_file(path, max_size=MAX_MD_BYTES):
     """
     若 path 超过 max_size 字节, 按标题边界拆分为多份 < max_size 的文件
     <stem>_part1.md, <stem>_part2.md, ...; 原文件删除。
     图片引用 (images/<stem>/...) 在各 part 中保持不变, 共用同一图片目录。
+    每个 part 起首若非标题则自动补 H1 (扉页/前言前导内容)。
     返回新文件路径列表 (未拆分则返回 [path])。
     """
     with open(path, "r", encoding="utf-8") as f:
@@ -427,9 +445,11 @@ def split_md_file(path, max_size=MAX_MD_BYTES):
     if len(parts) <= 1:
         return [path]
     stem, _ = os.path.splitext(path)
+    fallback = os.path.basename(stem)
     new_paths = []
     for i, part in enumerate(parts, 1):
         new_path = "%s_part%d.md" % (stem, i)
+        part = _ensure_leading_heading(part, fallback)
         with open(new_path, "w", encoding="utf-8") as f:
             f.write(part)
         new_paths.append(new_path)

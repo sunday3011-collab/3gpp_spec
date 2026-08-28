@@ -26,7 +26,8 @@ OUT = os.path.join(REPO, WIKI_DIR, "wiki", "sections.tsv")
 
 HEADING = re.compile(r"^(#{1,6})\s+(.*\S)\s*$")
 # clause: 数字式(可带尾字母,如 5.1.1a) 或 附录式(A.4.1)
-CLAUSE = re.compile(r"^(\d+(?:\.\d+)*[a-z]?|[A-Z]\.\d+(?:\.\d+)*)(.*)$")
+# (?![A-Za-z]): clause 后不能紧跟字母, 否则 "3GPP..." 会被误判为 clause "3"
+CLAUSE = re.compile(r"^(\d+(?:\.\d+)*[a-z]?|[A-Z]\.\d+(?:\.\d+)*)(?![A-Za-z])(.*)$")
 
 
 def spec_from_filename(fname):
