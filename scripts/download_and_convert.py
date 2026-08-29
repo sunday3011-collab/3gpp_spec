@@ -15,16 +15,27 @@
     各 part 共用同一 images/<stem>/ 目录。
   - 从 ETSI deliver 站点直接下载官方发布的 PDF 最新版
     (HTML 目录列表发现所有版本目录，按版本号元组排序取最高)。
+  - 本地 docx 单独转换 / 目录批量转换 (不下载)。
+    - 生成的 Markdown 对敏感空白做转义:
+      * 行首 4+ 空格/Tab (会被当代码块) -> 前加反斜杠 / Tab 归一为空格
+      * 行尾 2+ 空格 (会被当 <br>) -> 末尾加反斜杠显式换行
+      * 段落中非断点空白 (NBSP/U+00A0/U+1680 等) -> 普通空格
 
 用法:
   python3 download_and_convert.py 38413:NGAP 24501:NAS_5GS ...
   (每项格式 <编号>[:<名称>]，编号去掉点，如 38.101-5 写作 38101-5)
 
   # 对目录下已有 md 文件按 2MB 上限拆分 (不重新下载)
-  python3 download_and_convert.py --split 3gpp-specs/raw_sources/specs
+  python3 download_and_convert.py --split 3gpp-wiki-v2/raw_sources/specs
 
-  # 从 ETSI 下载最新 PDF，落入 3gpp-specs/raw_sources/pdfs/
+  # 从 ETSI 下载最新 PDF，落入 3gpp-wiki-v2/raw_sources/pdfs/
   python3 download_and_convert.py --pdf 38331:RRC 23501:5GS_Architecture 38101-1:RF_FR1
+
+  # 转换单个本地 docx (默认同目录同名 .md)
+  python3 download_and_convert.py --convert path/to/file.docx [output.md]
+
+  # 批量转换目录下所有 .docx (含子目录; 输出可选目录, 默认紧邻源文件)
+  python3 download_and_convert.py --convert-dir path/to/dir [output_dir]
 """
 
 import os
@@ -194,6 +205,53 @@ class DocxContext:
 SKIP_TAGS = {"pPr", "rPr", "bookmarkStart", "bookmarkEnd", "proofErr",
              "sectPr", "commentRangeStart", "commentRangeEnd"}
 
+# 各种 Unicode 空白分类: 非断行空白 (会破坏格式) 统一转普通空格
+_NBSP_CHARS = "\u00A0\u202F\u2007\u2060\uFEFF\u0009"  # NBSP, NARROW, FIGURE, WORD, BOM, TAB-inside
+_WS_CHARS = "\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2008\u2009\u200A\u1680"  # 其他宽空白
+
+
+def _normalize_ws(text):
+    """第一步: 把非标准空白规范化。不折叠连续空格,之后按上下文分别处理。"""
+    out_chars = []
+    for ch in text:
+        if ch in _NBSP_CHARS:
+            out_chars.append(" ")
+        elif ch in _WS_CHARS:
+            out_chars.append(" ")
+        else:
+            out_chars.append(ch)
+    return "".join(out_chars)
+
+
+def _escape_line(line):
+    """第二步: 单行级转义,避免 Markdown 把普通行当成代码块/硬换行。
+
+    规则:
+      - 行首 4+ 空格 或 1+ Tab (代码块识别) -> 前置反斜杠
+      - 行尾 2+ 空格 (硬换行) -> 改为 反斜杠 再接两个空格, 保留视觉效果
+    """
+    if not line:
+        return line
+    s = line
+    # 行首空白判定: 纯空格前导 >=4 或 含 tab
+    leading = len(s) - len(s.lstrip(" \t"))
+    if leading >= 4 or ("\t" in s[:leading]):
+        # 在第一个非空白字符前插反斜杠,保留原始缩进字符但阻止代码块识别
+        s = s[:leading] + "\\" + s[leading:]
+    # 行尾 2+ 空格: 改成 \<space><space> (更明确显式换行)
+    tail = len(s) - len(s.rstrip(" "))
+    if tail >= 2:
+        s = s[: len(s) - tail] + "\\  "
+    return s
+
+
+def sanitize_md_text(text):
+    """对整段 Markdown 文本做空白安全处理,保持行间结构但避免误识别。"""
+    if not text:
+        return text
+    text = _normalize_ws(text)
+    return "\n".join(_escape_line(ln) for ln in text.split("\n"))
+
 
 def _run_content(run_elem, out, ctx):
     """处理 w:r 的子元素: 文本 / OLE对象(w:object) / 图片(w:drawing)"""
@@ -287,7 +345,8 @@ def table_to_md(table_elem, ctx):
             cell_parts = [para_to_md(p, ctx).strip()
                           for p in tc.findall("w:p", NS)]
             txt = re.sub(r"\s+", " ", " ".join(x for x in cell_parts if x))
-            cells.append(txt.replace("|", "\\|"))
+            txt = sanitize_md_text(txt).replace("|", "\\|")
+            cells.append(txt)
         rows.append(cells)
     if not rows:
         return ""
@@ -316,14 +375,19 @@ def convert_docx_to_md(docx_path, sink):
                 if not text:
                     lines.append("")
                 elif level > 0:
-                    lines.append("#" * min(level, 6) + " " + text)
+                    # 标题: 前缀 "# " 保留, 正文部分做空白安全处理
+                    safe_body = sanitize_md_text(text)
+                    # 去掉 sanitize 可能在单行加的行首反斜杠 (标题前缀本身合法)
+                    if safe_body.startswith("\\"):
+                        safe_body = safe_body.lstrip("\\")
+                    lines.append("#" * min(level, 6) + " " + safe_body)
                 else:
-                    # 整段只有一条公式 -> 升级为块级 $$ 展示
+                    # 普通段落: 公式升级逻辑先判断原始 text, 最终 sanitize
                     if (text.startswith("$") and text.endswith("$")
                             and text.count("$") == 2
                             and "\n" not in text):
                         text = "$$%s$$" % text[1:-1]
-                    lines.append(text)
+                    lines.append(sanitize_md_text(text))
             elif child.tag.endswith("}tbl"):
                 lines.append(table_to_md(child, ctx))
                 lines.append("")
@@ -664,6 +728,86 @@ def process_pdf_all(specs):
     return results
 
 
+# ---------- 本地 docx 单文件 / 目录批量转换 ----------
+
+def convert_local_docx(docx_path, out_path=None):
+    """把本地 docx 转成 Markdown, 不经过下载。
+
+    - out_path 省略时在与 docx 同目录生成同名 .md
+    - 图片落盘到同目录下 images/<stem>/  (与 process() 一致)
+    - 超过 2MB 自动按标题边界拆 part
+    - 返回落地文件列表 (可能被拆分,多个 part)
+    """
+    docx_path = os.path.abspath(docx_path)
+    if not os.path.isfile(docx_path):
+        print("[convert] 未找到文件:", docx_path)
+        return None
+    if not docx_path.lower().endswith(".docx"):
+        print("[convert] 仅支持 .docx (旧式 .doc 需要 libreoffice):", docx_path)
+        return None
+    stem = os.path.splitext(os.path.basename(docx_path))[0]
+    src_dir = os.path.dirname(docx_path)
+    if out_path is None:
+        out_path = os.path.join(src_dir, stem + ".md")
+    else:
+        out_path = os.path.abspath(out_path)
+        os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
+    print(f"\n[convert] {docx_path}")
+    try:
+        sink = ImageSink(os.path.join(os.path.dirname(out_path), "images",
+                                      os.path.splitext(os.path.basename(out_path))[0]))
+        md = convert_docx_to_md(docx_path, sink)
+        with open(out_path, "w", encoding="utf-8") as f:
+            f.write(md)
+        kb = os.path.getsize(out_path) / 1024
+        print(f"  -> {out_path} ({kb:.1f} KB)")
+        # > 2MB 拆分
+        out_paths = split_md_file(out_path)
+        if len(out_paths) > 1:
+            print(f"  [拆分] {len(out_paths)} 份 (每份 < 2MB):")
+            for p in out_paths:
+                print(f"    - {os.path.basename(p)} "
+                      f"({os.path.getsize(p) / 1024:.1f} KB)")
+        return out_paths
+    except Exception as e:
+        print(f"  [失败] {e}")
+        return None
+
+
+def convert_local_dir(src_dir, out_dir=None):
+    """递归查找 src_dir 下全部 .docx 逐个转换,返回 (成功数,总数)。
+
+    - out_dir 省略: 每个 md 紧邻各自源 docx 生成
+    - out_dir 指定: 保持相对结构复制到 out_dir
+    """
+    src_dir = os.path.abspath(src_dir)
+    if not os.path.isdir(src_dir):
+        print("[convert-dir] 目录不存在:", src_dir)
+        return 0, 0
+    if out_dir is not None:
+        out_dir = os.path.abspath(out_dir)
+        os.makedirs(out_dir, exist_ok=True)
+    docxs = []
+    for root, _, files in os.walk(src_dir):
+        for fn in sorted(files):
+            if fn.lower().endswith(".docx"):
+                docxs.append(os.path.join(root, fn))
+    print(f"[convert-dir] 扫描到 {len(docxs)} 个 .docx in {src_dir}")
+    ok, total = 0, len(docxs)
+    for dp in docxs:
+        if out_dir is None:
+            result = convert_local_docx(dp)
+        else:
+            rel = os.path.relpath(dp, src_dir)
+            target = os.path.join(out_dir, os.path.splitext(rel)[0] + ".md")
+            os.makedirs(os.path.dirname(target), exist_ok=True)
+            result = convert_local_docx(dp, target)
+        if result:
+            ok += 1
+    print(f"\n==== convert-dir 汇总: {ok}/{total} 成功 ====")
+    return ok, total
+
+
 # ---------- 主流程 ----------
 
 def process(spec, name, release=19):
@@ -725,6 +869,16 @@ def process(spec, name, release=19):
 
 
 def main():
+    # --convert <docx> [out.md] 模式: 单个本地 docx -> md, 不下载
+    if len(sys.argv) >= 3 and sys.argv[1] == "--convert":
+        out = sys.argv[3] if len(sys.argv) >= 4 else None
+        convert_local_docx(sys.argv[2], out)
+        return
+    # --convert-dir <src_dir> [out_dir] 模式: 目录下全部 .docx 递归转换
+    if len(sys.argv) >= 3 and sys.argv[1] == "--convert-dir":
+        out_dir = sys.argv[3] if len(sys.argv) >= 4 else None
+        convert_local_dir(sys.argv[2], out_dir)
+        return
     # --pdf <spec[:name]> ... 模式: 从 ETSI 下载最新 PDF
     if len(sys.argv) >= 2 and sys.argv[1] == "--pdf":
         specs = []
