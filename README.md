@@ -6,33 +6,44 @@
 
 ```
 .
-├── 3gpp-specs/    # 知识库 (Obsidian vault)，见 3gpp-specs/README.md
-└── scripts/       # 下载/转换/登记脚本，见 scripts/README.md
+├── 3gpp-specs/          # 知识库 (Obsidian vault)，见 3gpp-specs/README.md
+└── .claude/             # 项目级 agent 配置（skill = 工具实体）
+    └── skills/3gpp-spec-downloader/
+        ├── SKILL.md     # 操作手册 / 总入口
+        └── scripts/     # 全部维护脚本（2026-09-07 自原仓库根 scripts/ 迁入）
 ```
+
+- `.workbuddy/skills/3gpp-spec-downloader` 是 **symlink**，指向 `.claude/skills/...`
+  实体：Claude Code（`.claude/`）与 WorkBuddy（`.workbuddy/skills/`）双入口加载
+  **同一份内容**，无漂移。结构约定见 `.claude/README.md`。
 
 - **3gpp-specs/**：**35 个** 3GPP 协议（R19 为主）已入库并**全部蒸馏**（带 clause 引用的
   结构化知识页）。原始 Markdown 存于 `raw_sources/specs/`（单文件超 2MB 已按标题边界
   拆分为多 part），ETSI 官方最新版 PDF 存于 `raw_sources/pdfs/`，LLM 编译的蒸馏页存于
   `wiki/compiled/`，个人洞察存于 `personal_insights/`。全库章节索引 `wiki/sections.tsv`
-  支持按 clause 精确取原文切片；检索阶梯与治理规约见 `3gpp-specs/CLAUDE.md`。
-- **scripts/**：纯 Python 标准库实现，无外部依赖。`download_and_convert.py` 负责从
-  3GPP 官网下载协议转 Markdown、或从 ETSI 下载官方最新 PDF；`ingest_md_to_wiki.py`
-  是初始一次性迁移脚本。
+  支持按 clause 精确取原文切片；检索阶梯与知识库治理规约见仓库根 [`CLAUDE.md`](CLAUDE.md)。
+- **`.claude/skills/3gpp-spec-downloader/scripts/`**：纯 Python 标准库实现，无外部依赖。
+  `download_and_convert.py` 负责从 3GPP 官网下载协议转 Markdown、或从 ETSI 下载官方最新
+  PDF；`ingest_md_to_wiki.py` 是初始一次性迁移脚本。完整清单见
+  `.claude/skills/3gpp-spec-downloader/scripts/README.md`。
 
 ## 快速开始
 
 ```bash
+# 脚本目录代称（唯一源头，位于项目级 skill 捆绑目录）
+SK=.claude/skills/3gpp-spec-downloader/scripts
+
 # 下载并转换新协议 (编号去掉点，38.101-5 写作 38101-5)
-python3 scripts/download_and_convert.py 38413:NGAP 24501:NAS_5GS
+python3 $SK/download_and_convert.py 38413:NGAP 24501:NAS_5GS
 
 # 从 ETSI 下载官方最新版 PDF
-python3 scripts/download_and_convert.py --pdf 38331:RRC 23501:5GS_Architecture
+python3 $SK/download_and_convert.py --pdf 38331:RRC 23501:5GS_Architecture
 
 # 对已有 md 按 2MB 上限拆分 (不重新下载)
-python3 scripts/download_and_convert.py --split 3gpp-specs/raw_sources/specs
+python3 $SK/download_and_convert.py --split 3gpp-specs/raw_sources/specs
 
 # 刷新章节索引 (sections.tsv 行号区间)
-WIKI_DIR=3gpp-specs python3 scripts/gen_section_index.py
+WIKI_DIR=3gpp-specs python3 $SK/gen_section_index.py
 ```
 
 下载产物落入 `3gpp-specs/raw_sources/specs/_incoming/`，再整理到对应

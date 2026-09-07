@@ -1,7 +1,7 @@
 # 3GPP Knowledge Wiki
 
 基于 Karpathy「LLM Wiki」方法论的 3GPP 协议知识库（Obsidian vault）。
-**完整操作规约见 [CLAUDE.md](CLAUDE.md)** —— 每次会话前先读它。
+**完整操作规约见[根目录 CLAUDE.md](../CLAUDE.md)** —— 每次会话前先读它。
 
 ## 三层结构
 

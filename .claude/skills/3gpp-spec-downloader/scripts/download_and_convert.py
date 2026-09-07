@@ -50,8 +50,21 @@ import xml.etree.ElementTree as ET
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from omml2latex import omml_to_latex
 
-# 路径从脚本自身位置推导，仓库迁移后仍可用 (scripts/ 在仓库根下一层)
-REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+def _repo_root():
+    """从本文件位置向上探测仓库根(含.git)；找不到则回退上溯2层(仓库外单独运行时)。"""
+    d = os.path.dirname(os.path.abspath(__file__))
+    for _ in range(10):
+        if os.path.isdir(os.path.join(d, ".git")):
+            return d
+        p = os.path.dirname(d)
+        if p == d:
+            break
+        d = p
+    return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+# 路径从脚本自身位置推导：向上探测 .git 定位仓库根（脚本现位于 .claude/skills/.../scripts/ 深层）
+REPO = _repo_root()
 # 下载得到的 md 落入 raw_sources 的暂存区 _incoming，供后续整理/ingest；可用环境变量 OUT_MD_DIR 覆盖
 OUT_MD_DIR = os.environ.get(
     "OUT_MD_DIR", os.path.join(REPO, "3gpp-specs", "raw_sources", "specs", "_incoming"))

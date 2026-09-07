@@ -3,6 +3,10 @@
 3GPP 协议库的维护脚本。均为 **Python 3 标准库**实现，无需 pandoc/libreoffice 或 pip 依赖。
 路径从脚本自身位置推导，可随仓库整体迁移。
 
+> 本目录是项目级 skill `3gpp-spec-downloader` 的捆绑脚本（2026-09-07 自仓库根 `scripts/`
+> 迁入，仓库根已无 `scripts/`）。命令以仓库根为 cwd，脚本目录代称：
+> `SK=.claude/skills/3gpp-spec-downloader/scripts`
+
 ## 活跃脚本
 
 ### `download_and_convert.py`
@@ -20,7 +24,7 @@
     `![](images/...)` 引用。**整理协议时须把 images/ 目录随 md 一起移动**。
 
 ```bash
-python3 scripts/download_and_convert.py 38413:NGAP 24501:NAS_5GS
+python3 $SK/download_and_convert.py 38413:NGAP 24501:NAS_5GS
 # 每项格式 <编号>[:<名称>]，编号去掉点（38.101-5 写作 38101-5）
 ```
 
@@ -32,13 +36,13 @@ WMF/EMF → PNG 批量转换 + md 引用改写（Obsidian/GitHub 不渲染 WMF/E
 依赖 LibreOffice：`brew install --cask libreoffice`。幂等可重跑。
 
 ```bash
-python3 scripts/convert_images.py            # 处理 raw_sources/specs/ 全部
-python3 scripts/convert_images.py <md或目录>  # 指定目标
+python3 $SK/convert_images.py            # 处理 raw_sources/specs/ 全部
+python3 $SK/convert_images.py <md或目录>  # 指定目标
 ```
 
 ### `omml2latex.py`
 OMML → LaTeX 转换器（纯标准库），被 `download_and_convert.py` 调用；
-也可独立调试：`python3 scripts/omml2latex.py <docx或document.xml>`。
+也可独立调试：`python3 $SK/omml2latex.py <docx或document.xml>`。
 
 ### `ingest_md_to_wiki.py`
 **一次性迁移脚本**：把 `md/` 下全部协议结构化登记进 `3gpp-specs/`

@@ -17,7 +17,20 @@ import shutil
 
 import download_and_convert as dl  # 同目录复用
 
-REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+def _repo_root():
+    """从本文件位置向上探测仓库根(含.git)；找不到则回退上溯2层(仓库外单独运行时)。"""
+    d = os.path.dirname(os.path.abspath(__file__))
+    for _ in range(10):
+        if os.path.isdir(os.path.join(d, ".git")):
+            return d
+        p = os.path.dirname(d)
+        if p == d:
+            break
+        d = p
+    return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+REPO = _repo_root()
 WIKI = os.path.join(REPO, "3gpp-specs")
 RAW = os.path.join(WIKI, "raw_sources", "specs")
 COMPILED = os.path.join(WIKI, "wiki", "compiled")

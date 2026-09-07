@@ -16,8 +16,21 @@ import os
 import re
 import shutil
 
-# 路径从脚本自身位置推导 (scripts/ 在仓库根下一层)
-REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+def _repo_root():
+    """从本文件位置向上探测仓库根(含.git)；找不到则回退上溯2层(仓库外单独运行时)。"""
+    d = os.path.dirname(os.path.abspath(__file__))
+    for _ in range(10):
+        if os.path.isdir(os.path.join(d, ".git")):
+            return d
+        p = os.path.dirname(d)
+        if p == d:
+            break
+        d = p
+    return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+# 路径从脚本自身位置推导：向上探测 .git 定位仓库根
+REPO = _repo_root()
 MD_DIR = os.path.join(REPO, "md")
 WIKI = os.path.join(REPO, "3gpp-specs")
 RAW = os.path.join(WIKI, "raw_sources", "specs")

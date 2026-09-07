@@ -18,7 +18,20 @@
 import os
 import re
 
-REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+def _repo_root():
+    """从本文件位置向上探测仓库根(含.git)；找不到则回退上溯2层(仓库外单独运行时)。"""
+    d = os.path.dirname(os.path.abspath(__file__))
+    for _ in range(10):
+        if os.path.isdir(os.path.join(d, ".git")):
+            return d
+        p = os.path.dirname(d)
+        if p == d:
+            break
+        d = p
+    return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+REPO = _repo_root()
 # 用 WIKI_DIR 覆盖目标 wiki (默认 3gpp-specs); SPECS_ROOT / OUT 随之推导
 WIKI_DIR = os.environ.get("WIKI_DIR", "3gpp-specs")
 SPECS_ROOT = os.path.join(REPO, WIKI_DIR, "raw_sources", "specs")

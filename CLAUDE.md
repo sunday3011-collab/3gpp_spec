@@ -1,8 +1,62 @@
-# 3GPP Knowledge Wiki — 操作规约 (CLAUDE.md)
+# 3GPP Protocols — 操作规约 (CLAUDE.md)
 
-> 本文件是本知识库的治理文档。每次会话开始、每次 ingest/query/lint 前，先读本文件。
+> 本文件是本仓库（Claude Code 工程）的**总治理文档**。每次会话开始、以及涉及协议下载/转换、
+> 知识库 ingest/query/lint 的操作前，先读本文件（结构说明另见仓库根 `.claude/README.md`）。
 
 ---
+
+## 仓库定位与结构
+
+本仓库 = **3GPP 协议库 + LLM Wiki 知识管理系统**（基于 Karpathy「LLM Wiki」方法论）。
+
+```
+.
+├── CLAUDE.md                 # 本文件：总治理规约
+├── README.md                 # 仓库总览与快速开始
+├── 3gpp-specs/               # 知识库 (Obsidian vault) + 协议原文/PDF 资产
+│   ├── README.md             # 知识库速览（三层结构/三指令/约定速记）
+│   ├── raw_sources/          # 原文：specs/(md) · pdfs/ · word/ · product/
+│   ├── wiki/                 # LLM 编译层：compiled/ · authored/ · index · log · sections.tsv
+│   └── personal_insights/    # 人写的个人洞察
+└── .claude/                  # 项目级 agent 配置（skill = 工具实体，唯一源头）
+    └── skills/3gpp-spec-downloader/
+        ├── SKILL.md          # 协议工具总入口（下载/转换/图片/索引）
+        └── scripts/          # 全部维护脚本（2026-09-07 自原仓库根 scripts/ 迁入）
+```
+
+关键事实（避免过时认知）：
+- **仓库根不再有 `scripts/` 目录**；一切工具脚本在 `.claude/skills/3gpp-spec-downloader/scripts/`
+- `.workbuddy/skills/3gpp-spec-downloader` 是指向 `.claude/skills/...` 的 symlink（WorkBuddy 入口），
+  Claude Code 直接读 `.claude/`——单份内容，无漂移
+
+---
+
+## 工具入口（协议下载 / 转换 / 索引）
+
+协议维护一律走项目级 skill，命令以仓库根为 cwd：
+
+```bash
+SK=.claude/skills/3gpp-spec-downloader/scripts   # 脚本目录代称
+
+python3 $SK/download_and_convert.py 38331:RRC 38321:MAC            # FTP docx → md
+python3 $SK/download_and_convert.py --pdf 38331:RRC                # ETSI 官方 PDF
+python3 $SK/download_and_convert.py --split <md目录>                # md 超2MB 拆分
+python3 $SK/convert_images.py [md或目录]                            # WMF/EMF → PNG
+WIKI_DIR=3gpp-specs python3 $SK/gen_section_index.py               # 刷新 sections.tsv
+```
+
+- 版本选择：FTP 优先 R19(`j`前缀)、404 回退 R18(`i`)；ETSI 解析版本目录取最高
+- 下载产物落入 `3gpp-specs/raw_sources/specs/_incoming/`，整理到 `TS<...>` 子目录后再 ingest
+- 完整操作细节（协议号格式/输出结构/已知限制）见 `.claude/skills/3gpp-spec-downloader/SKILL.md`
+  ／该目录 `scripts/README.md`
+
+---
+
+# 知识库操作规约（3gpp-specs/）
+
+> **路径基线**：除显式注明外，本章所有相对路径均以 **`3gpp-specs/` 为基准**
+> （如 `raw_sources/` = `3gpp-specs/raw_sources/`，`wiki/sections.tsv` = `3gpp-specs/wiki/sections.tsv`）。
+> 知识库同时是 Obsidian vault。
 
 ## 系统定位
 
@@ -12,8 +66,6 @@
 - **人负责供给与沉淀**：投喂 `raw_sources/`，沉淀 `personal_insights/`。
 
 LLM 不创造一手知识，只编译、组织、维护人投喂的原始材料，并把热点知识缓存进 `wiki/`。
-
----
 
 ## 目录权限规则
 
@@ -25,8 +77,6 @@ LLM 不创造一手知识，只编译、组织、维护人投喂的原始材料�
 | `personal_insights/` | **辅助结构化** | 人写，LLM 协助结构化，不主动修改已有内容 |
 | `wiki/index.md` | **每次 ingest 后必须更新** | 全库导航入口 |
 | `wiki/log.md` | **append-only** | 只追加，绝不修改历史记录 |
-
----
 
 ## 协议层分类（WG 归属）
 
@@ -41,8 +91,6 @@ NAS      ← CT WG1:  TS24.501
 5GC      ← SA WG2:  TS23.501 / 23.502 / 23.503
 ```
 
----
-
 ## 术语规范
 
 ingest 和写作时**强制执行**：
@@ -53,8 +101,6 @@ ingest 和写作时**强制执行**：
 - Release 标注格式：**Rel-18**，不写 R18
 - 引用规范必须**同时写编号和标题**（如 `TS38.321 MAC protocol specification`）
 - 产品私有行为必须标注 **⚠️ 产品私有，不代表 3GPP 标准**
-
----
 
 ## Wiki 页面 Frontmatter 规范
 
@@ -78,8 +124,6 @@ last_updated: YYYY-MM-DD
 - `compiled/` 目录下所有页面：`llm_can_overwrite: true`
 - `authored/` 目录下所有页面：`llm_can_overwrite: false`
 
----
-
 ## Ingest 规程
 
 收到 `ingest [文件路径或知识点]` 指令时，按以下顺序执行：
@@ -94,8 +138,6 @@ last_updated: YYYY-MM-DD
 8. 在 `wiki/log.md` 追加记录，格式：
    `## [日期] ingest | [来源文件] | 影响页面：[列表]`
 
----
-
 ## Query 规程
 
 收到技术问题时，**按检索阶梯由廉价到昂贵逐级升级，永远不要直接整篇加载 `raw_sources/` 原文**
@@ -107,7 +149,8 @@ last_updated: YYYY-MM-DD
 3. **取 clause 切片**：若蒸馏页不足，查 `wiki/sections.tsv`
    （列：`spec clause level title file start_line end_line`，用 grep/awk），
    定位精确 clause，**只读其 `start_line..end_line` 行号区间**那几十行，而非整篇。
-   例：`awk -F'\t' '$1=="TS38.321" && $2=="5.1.4"' wiki/sections.tsv` → 得到文件与行号区间 → 按区间 Read。
+   例：`awk -F'\t' '$1=="TS38.321" && $2=="5.1.4"' 3gpp-specs/wiki/sections.tsv`
+   → 得到 file 与行号区间 → 按区间 Read（file 为相对 `3gpp-specs/raw_sources/specs/` 的路径）。
 4. **兜底**：仅当上述都不够时，才读原文更大段落。
 
 ### 作答与归档
@@ -116,10 +159,9 @@ last_updated: YYYY-MM-DD
   - 有价值 → 写入 `wiki/compiled/`（热点层优先）或 `wiki/authored/`，使下次查询命中阶梯第 2 级。
   - 在 `log.md` 追加：`## [日期] query | [问题摘要] | 归档：[是/否]`
 
-> `wiki/sections.tsv` 由 `scripts/gen_section_index.py` 生成（扫描全部原文标题）。
+> `wiki/sections.tsv` 由 `.claude/skills/3gpp-spec-downloader/scripts/gen_section_index.py`
+> 生成（扫描全部原文标题）。
 > 原文有增删/换版后重新运行以刷新行号区间。
-
----
 
 ## Lint 规程
 
@@ -132,8 +174,6 @@ last_updated: YYYY-MM-DD
 - `personal_insights/inbox/` 中滞留超过 2 周的笔记（提示需要提炼）
 
 **输出 lint 报告，不自动修改，等待我确认后再执行。**
-
----
 
 ## 产品知识处理规范
 
@@ -153,8 +193,6 @@ last_updated: YYYY-MM-DD
 [原因推测，标注【推测】]
 ```
 
----
-
 ## personal_insights 提升规则
 
 Flomo 笔记满足以下**任一条件**时，提示我提升至 `personal_insights/propositions/`：
@@ -168,8 +206,6 @@ Flomo 笔记满足以下**任一条件**时，提示我提升至 `personal_insig
 - 你辅助结构化为原子笔记
 - 写入 `personal_insights/propositions/`
 - 在对应 wiki 协议页面底部加反向链接
-
----
 
 ## 链接规范
 
