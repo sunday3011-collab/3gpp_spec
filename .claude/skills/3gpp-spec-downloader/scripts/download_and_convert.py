@@ -26,9 +26,9 @@
   (每项格式 <编号>[:<名称>]，编号去掉点，如 38.101-5 写作 38101-5)
 
   # 对目录下已有 md 文件按 2MB 上限拆分 (不重新下载)
-  python3 download_and_convert.py --split 3gpp-wiki-v2/raw_sources/specs
+  python3 download_and_convert.py --split <md目录>
 
-  # 从 ETSI 下载最新 PDF，落入 3gpp-wiki-v2/raw_sources/pdfs/
+  # 从 ETSI 下载最新 PDF，落入 Source `pdfs` (见 config.py)
   python3 download_and_convert.py --pdf 38331:RRC 23501:5GS_Architecture 38101-1:RF_FR1
 
   # 转换单个本地 docx (默认同目录同名 .md)
@@ -49,6 +49,7 @@ import xml.etree.ElementTree as ET
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from omml2latex import omml_to_latex
+import config as cfg  # Source 位置统一配置 (仓库根 sources.json)
 
 def _repo_root():
     """从本文件位置向上探测仓库根(含.git)；找不到则回退上溯2层(仓库外单独运行时)。"""
@@ -63,11 +64,11 @@ def _repo_root():
     return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
-# 路径从脚本自身位置推导：向上探测 .git 定位仓库根（脚本现位于 .claude/skills/.../scripts/ 深层）
-REPO = _repo_root()
-# 下载得到的 md 落入 raw_sources 的暂存区 _incoming，供后续整理/ingest；可用环境变量 OUT_MD_DIR 覆盖
+# 路径优先级: 环境变量 > sources.json > 内置默认 (Source 位置用 config.py set 修改)
+REPO = cfg.REPO
+# 下载得到的 md 落入 Source `specs` 的暂存区 _incoming，供后续整理/ingest
 OUT_MD_DIR = os.environ.get(
-    "OUT_MD_DIR", os.path.join(REPO, "3gpp-specs", "raw_sources", "specs", "_incoming"))
+    "OUT_MD_DIR", os.path.join(cfg.source_path("specs"), "_incoming"))
 WORK_ROOT = os.path.join(REPO, "downloads")  # 临时工作区，运行结束自动清理
 BASE_URL_TEMPLATE = "https://www.3gpp.org/ftp/specs/archive/{series}_series"
 RELEASE_LETTERS = {19: "j", 18: "i", 17: "h", 16: "g", 15: "f"}
@@ -564,9 +565,8 @@ def split_dir(dir_path):
 # ---------- ETSI PDF 下载 (官方发布 PDF, 版本目录最新优先) ----------
 
 ETSI_DELIVER_BASE = "https://www.etsi.org/deliver/etsi_TS"
-# PDF 输出目录: 与 specs/ 同级, 方便与 raw_sources/ 内其他原始材料一起管理
-PDF_OUT_DIR = os.environ.get(
-    "PDF_OUT_DIR", os.path.join(REPO, "3gpp-specs", "raw_sources", "pdfs"))
+# PDF 输出目录 = Source `pdfs` (sources.json 注册位置；环境变量 PDF_OUT_DIR 可覆盖)
+PDF_OUT_DIR = os.environ.get("PDF_OUT_DIR", cfg.source_path("pdfs"))
 
 _VER_DIR_RE = re.compile(r"^(\d+)\.(\d+)\.(\d+)_\d+$")   # 例: 19.03.00_60
 

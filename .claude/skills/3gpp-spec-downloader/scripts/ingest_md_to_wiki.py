@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-将 md/ 下的全部3GPP协议结构化登记进 3gpp-specs：
-  1. 把每个 md 移入 raw_sources/specs/<TS子目录>/ (人投喂动作)
+将 md/ 下的全部3GPP协议结构化登记进知识库：
+  1. 把每个 md 移入 raw_sources/3gpp_sources/specs/<TS子目录>/ (人投喂动作)
   2. 为每个 spec 生成 wiki/compiled/ 概览页 (frontmatter + 职责 + 章节目录 + 原文链接)
   3. 重建 wiki/index.md
   4. 追加 wiki/log.md (append-only)
@@ -29,11 +29,12 @@ def _repo_root():
     return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
-# 路径从脚本自身位置推导：向上探测 .git 定位仓库根
-REPO = _repo_root()
+# 路径优先级: sources.json (Source `specs` / wiki_root)
+import config as cfg  # 同目录 Source 位置统一配置
+REPO = cfg.REPO
 MD_DIR = os.path.join(REPO, "md")
-WIKI = os.path.join(REPO, "3gpp-specs")
-RAW = os.path.join(WIKI, "raw_sources", "specs")
+WIKI = cfg.wiki_root()
+RAW = cfg.source_path("specs")
 COMPILED = os.path.join(WIKI, "wiki", "compiled")
 TODAY = "2026-06-21"
 
@@ -152,7 +153,7 @@ last_updated: {TODAY}
 - **层**：{layer}
 - **职责**：{duty}
 - **Release**：{release}
-- **原始文档**：[[{raw_link}]] （`raw_sources/specs/{raw_subdir}/{fname}`）
+- **原始文档**：[[{raw_link}]] 
 
 ## 规范章节目录
 {toc_md}
@@ -204,7 +205,7 @@ last_updated: {TODAY}
     log_entry = (f"\n## [{TODAY}] ingest | md/ 全量结构化登记 | "
                  f"影响页面：{n} 个 spec 概览页 + index.md 重建\n"
                  f"- 协议层页面 {len(rows_proto)} 个，概念页面 {len(rows_concept)} 个\n"
-                 f"- 原始 md 已移入 raw_sources/specs/ 对应子目录\n")
+                 f"- 原始 md 已移入 raw_sources/3gpp_sources/specs/ 对应子目录\n")
     with open(os.path.join(WIKI, "wiki", "log.md"), "a", encoding="utf-8") as f:
         f.write(log_entry)
 

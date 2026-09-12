@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "_comment": "Source 位置注册表。相对路径基于仓库根解析；绝对路径(仓库外)原样使用。修改请用 config.py 子命令，或直接编辑本文件。",
+  "wiki_root": ".",
+  "sources": {
+    "specs": {
+      "path": "raw_sources/3gpp_sources/specs",
+      "desc": "协议 Markdown 原文 (含 _incoming 暂存区与 images/)"
+    },
+    "pdfs": {
+      "path": "raw_sources/3gpp_sources/pdfs",
+      "desc": "ETSI 官方最新版 PDF"
+    },
+    "word": {
+      "path": "raw_sources/3gpp_sources/word",
+      "desc": "原始 doc/docx 文档"
+    },
+    "product": {
+      "path": "raw_sources/product",
+      "desc": "产品私有文档 (按产品名分子目录)"
+    }
+  }
+}

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-扫描 raw_sources/specs/ 下全部协议原文，生成章节地址索引 wiki/sections.tsv。
+扫描 raw_sources/3gpp_sources/specs/ 下全部协议原文，生成章节地址索引 wiki/sections.tsv。
 
 每个标题一行，记录其 clause 编号与在原文中的行号区间，使任意 clause 可被随机访问
 （只读对应几十行切片，而非整篇巨型原文）。grep 即可用，不依赖模型能力。
@@ -10,13 +10,15 @@
 - 区间含本 clause 及其全部子 clause（start..end，1-based 闭区间）
 - file：相对仓库根的路径
 
-默认扫描 `3gpp-specs/`。处理其它 wiki 时用环境变量覆盖:
-  WIKI_DIR=3gpp-specs python3 scripts/gen_section_index.py
+默认扫描 sources.json 里 Source `specs` 注册的位置 (config.py list 查看)。
+兼容旧环境变量: WIKI_DIR=<wiki目录> 或 SPECS_ROOT=<specs目录> 覆盖对应项。
 原文有增删/换版/拆分后重新运行以刷新行号区间。
 """
 
 import os
 import re
+
+import config as _cfg  # Source 位置统一配置 (仓库根 sources.json)
 
 def _repo_root():
     """从本文件位置向上探测仓库根(含.git)；找不到则回退上溯2层(仓库外单独运行时)。"""
@@ -32,10 +34,11 @@ def _repo_root():
 
 
 REPO = _repo_root()
-# 用 WIKI_DIR 覆盖目标 wiki (默认 3gpp-specs); SPECS_ROOT / OUT 随之推导
-WIKI_DIR = os.environ.get("WIKI_DIR", "3gpp-specs")
-SPECS_ROOT = os.path.join(REPO, WIKI_DIR, "raw_sources", "specs")
-OUT = os.path.join(REPO, WIKI_DIR, "wiki", "sections.tsv")
+# 路径优先级: 环境变量 (SPECS_ROOT / WIKI_DIR) > sources.json > 内置默认
+WIKI = os.environ.get("WIKI_DIR") and os.path.join(REPO, os.environ["WIKI_DIR"]) \
+    or _cfg.wiki_root()
+SPECS_ROOT = os.environ.get("SPECS_ROOT") or _cfg.source_path("specs")
+OUT = os.path.join(WIKI, "wiki", "sections.tsv")
 
 HEADING = re.compile(r"^(#{1,6})\s+(.*\S)\s*$")
 # clause: 数字式(可带尾字母,如 5.1.1a) 或 附录式(A.4.1)

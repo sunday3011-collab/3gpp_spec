@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-增量入库：下载若干 3GPP 协议并登记进 3gpp-specs。
+增量入库：下载若干 3GPP 协议并登记进知识库。
 
 复用 download_and_convert 的下载/转换逻辑；随后：
-  - 原文移入 raw_sources/specs/<raw_subdir>/
+  - 原文移入 raw_sources/3gpp_sources/specs/<raw_subdir>/
   - 生成 wiki/compiled/<comp_subdir>/<page>.md 概览页 (frontmatter+职责+章节目录+原文链接)
   - 追加行到 wiki/index.md 对应表 (协议层 / 概念，不重建)
   - 追加 wiki/log.md (append-only)
@@ -30,9 +30,11 @@ def _repo_root():
     return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
-REPO = _repo_root()
-WIKI = os.path.join(REPO, "3gpp-specs")
-RAW = os.path.join(WIKI, "raw_sources", "specs")
+# 路径优先级: sources.json (Source `specs` / wiki_root)
+import config as cfg  # 同目录 Source 位置统一配置
+REPO = cfg.REPO
+WIKI = cfg.wiki_root()
+RAW = cfg.source_path("specs")
 COMPILED = os.path.join(WIKI, "wiki", "compiled")
 INDEX = os.path.join(WIKI, "wiki", "index.md")
 LOG = os.path.join(WIKI, "wiki", "log.md")
@@ -130,7 +132,7 @@ last_updated: {TODAY}
 - **层**：{layer}
 - **职责**：{duty}
 - **Release**：{release}
-- **原始文档**：[[{raw_link}]] （`raw_sources/specs/{raw_subdir}/{fname}`）
+- **原始文档**：[[{raw_link}]] 
 
 ## 规范章节目录
 {toc_md}

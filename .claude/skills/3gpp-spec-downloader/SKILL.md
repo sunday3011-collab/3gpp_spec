@@ -28,15 +28,36 @@ SK=.claude/skills/3gpp-spec-downloader/scripts   # 下文用 $SK 代指，直接
 - 仓库外单独运行（如用户级 skill 的镜像副本）探测失败时回退"上溯2层"，此时必须用环境变量覆盖输出目录
 - `download_and_convert.py` 与 `omml2latex.py`、`add_specs.py` 的同目录 import 关系随整体迁移保持
 
+## Source 位置配置（2026-09-11 重构）
+
+各 Source（specs/pdfs/word/product 及任意新增类型）的磁盘位置不再硬编码，统一由
+**仓库根 `sources.json`** 注册（相对路径基于仓库根解析，**支持仓库外绝对路径**）。
+管理命令：
+
+```bash
+python3 $SK/config.py list                  # 列出全部 Source 及存在性
+python3 $SK/config.py get specs             # 打印解析后绝对路径 (供 shell 取用)
+python3 $SK/config.py set specs /外置盘/dir  # 注册/修改位置 (新增类型同用)
+python3 $SK/config.py remove vendor         # 删除条目 (不动磁盘文件)
+python3 $SK/config.py doctor                # 校验配置与路径有效性
+```
+
+- 路径优先级：**环境变量（`OUT_MD_DIR`/`PDF_OUT_DIR`/`WIKI_DIR`/`SPECS_ROOT`）> sources.json > 内置默认**
+- 环境变量 `SOURCES_CONFIG` 可指定其他配置文件（用户级镜像/仓库外运行时必用）
+- 修改 Source 位置后记得重跑 `gen_section_index.py` 刷新 sections.tsv
+- **目录重组三步**（2026-09-12 起）：`git mv` → `config.py set` → `gen_section_index.py`；
+  compiled 页面原文引用只写 `[[wikilink]]`、脚本不硬编码路径，故目录随便挪只碰这三步
+
 ## 工作流速查
 
 | 任务 | 命令 |
 |------|------|
+| 查看/配置 Source 位置 | `python3 $SK/config.py list / set <类型> <路径> / doctor` |
 | docx下载转md | `python3 $SK/download_and_convert.py 38331:RRC 38321:MAC` |
 | ETSI官方PDF | `python3 $SK/download_and_convert.py --pdf 38331:RRC` |
-| md超2MB拆分 | `python3 $SK/download_and_convert.py --split 3gpp-specs/raw_sources/specs` |
+| md超2MB拆分 | `python3 $SK/download_and_convert.py --split raw_sources/3gpp_sources/specs` |
 | WMF/EMF→PNG | `python3 $SK/convert_images.py [md或目录，缺省全部]` |
-| 刷新章节索引 | `WIKI_DIR=3gpp-specs python3 $SK/gen_section_index.py` |
+| 刷新章节索引 | `python3 $SK/gen_section_index.py`（读 sources.json，无需 WIKI_DIR） |
 | 增量入库(低频) | 先编辑 `add_specs.py` 的 `ENTRIES` 再 `python3 $SK/add_specs.py` |
 | 初始迁移(仅参考) | `ingest_md_to_wiki.py`（2026-06-21 已执行，保留复现用） |
 
@@ -44,6 +65,7 @@ SK=.claude/skills/3gpp-spec-downloader/scripts   # 下文用 $SK 代指，直接
 
 | 文件 | 角色 |
 |------|------|
+| `config.py` | Source 位置配置工具 + 库接口（全部脚本从此读路径） |
 | `download_and_convert.py` | 核心：FTP docx→md / ETSI PDF / md 拆分，import omml2latex |
 | `omml2latex.py` | OMML→LaTeX 转换器（纯标准库），被 download_and_convert 调用 |
 | `convert_images.py` | WMF/EMF→PNG 批量转换 + md 引用改写（依赖 LibreOffice soffice） |
@@ -65,11 +87,14 @@ ETSI PDF：解析版本目录按 (major, minor, patch) 排序取最高。
 ## 输出结构
 
 ```
-3gpp-specs/raw_sources/
-├── pdfs/          # ETSI官方PDF，命名 <38.xxx>_<名称>_V<版本>.pdf
-└── specs/         # 转换后的md
-    ├── _incoming/ # 新下载md暂存区
-    └── images/    # 图片，按md文件名分目录 (eq-NNNN公式 / fig-NNNN插图)
+raw_sources/
+├── 3gpp_sources/          # 规格类原文 (2026-09-12 封装)
+│   ├── pdfs/              # ETSI官方PDF，命名 <38.xxx>_<名称>_V<版本>.pdf
+│   ├── word/              # 原始 doc/docx 归档
+│   └── specs/             # 转换后的md
+│       ├── _incoming/     # 新下载md暂存区
+│       └── images/        # 图片，按md文件名分目录 (eq-NNNN公式 / fig-NNNN插图)
+└── product/               # 产品私有文档 (与大文件夹同级)
 ```
 
 md 超 2MB 按标题边界拆 `_partN.md`，各 part 共用 images/。**整理协议时须把 images/ 随 md 一起移动**。
@@ -90,8 +115,9 @@ md 超 2MB 按标题边界拆 `_partN.md`，各 part 共用 images/。**整理�
 | `.workbuddy/skills/3gpp-spec-downloader`（项目级 symlink） | 指向实体 | 无需维护 |
 
 ```bash
-# 本 skill 脚本更新后同步到用户级镜像（下载器+公式转换器两个文件即可）
-cp .claude/skills/3gpp-spec-downloader/scripts/{download_and_convert.py,omml2latex.py} \
+# 本 skill 脚本更新后同步到用户级镜像（含 config.py；sources.json 不拷贝，
+# 镜像在仓库外运行时用 SOURCES_CONFIG 指向实际配置）
+cp .claude/skills/3gpp-spec-downloader/scripts/{download_and_convert.py,omml2latex.py,config.py} \
    ~/.workbuddy/skills/3gpp-spec-downloader/scripts/
 ```
 
